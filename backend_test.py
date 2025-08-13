@@ -280,24 +280,24 @@ class BackendAPITester:
     def test_cors_configuration(self):
         """Test CORS configuration"""
         try:
-            # Make an OPTIONS request to check CORS headers
-            response = self.session.options(f"{self.base_url}/")
+            # Make a GET request with Origin header to check CORS headers
+            headers = {'Origin': 'https://example.com'}
+            response = self.session.get(f"{self.base_url}/", headers=headers)
             
             cors_headers = [
                 'access-control-allow-origin',
-                'access-control-allow-methods',
-                'access-control-allow-headers'
+                'access-control-allow-credentials'
             ]
             
             found_cors_headers = []
             for header in cors_headers:
                 if header in response.headers:
-                    found_cors_headers.append(header)
+                    found_cors_headers.append(f"{header}: {response.headers[header]}")
             
             if found_cors_headers:
                 self.log_test_result("CORS Configuration", True, f"CORS headers found: {found_cors_headers}")
             else:
-                self.log_test_result("CORS Configuration", False, "No CORS headers found in OPTIONS response")
+                self.log_test_result("CORS Configuration", False, "No CORS headers found in response")
                 
         except Exception as e:
             self.log_test_result("CORS Configuration", False, f"Request failed: {str(e)}")
