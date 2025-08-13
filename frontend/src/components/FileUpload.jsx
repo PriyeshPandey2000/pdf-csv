@@ -109,11 +109,13 @@ const FileUpload = ({ onFileSelect, selectedFile, onRemoveFile }) => {
             className="hidden"
             id="file-upload"
           />
-          <label htmlFor="file-upload">
-            <Button className="cursor-pointer">
-              Select PDF File
-            </Button>
-          </label>
+          <Button 
+            onClick={handleButtonClick}
+            type="button"
+            className="cursor-pointer"
+          >
+            Select PDF File
+          </Button>
         </div>
       </CardContent>
     </Card>
