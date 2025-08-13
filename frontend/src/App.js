@@ -5,7 +5,7 @@ import { useToast } from './hooks/use-toast';
 import FileUpload from './components/FileUpload';
 import ProcessingStatus from './components/ProcessingStatus';
 import TransactionPreview from './components/TransactionPreview';
-import { simulateProcessing, generateCSV } from './utils/mockData';
+import BankStatementAPI from './services/api';
 import { FileText, Zap, Shield, Download } from 'lucide-react';
 import { Card, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
@@ -14,13 +14,17 @@ function App() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [processingStatus, setProcessingStatus] = useState('idle');
   const [progress, setProgress] = useState(0);
+  const [jobId, setJobId] = useState(null);
   const [extractedData, setExtractedData] = useState(null);
+  const [transactions, setTransactions] = useState([]);
   const { toast } = useToast();
 
   const handleFileSelect = (file) => {
     setSelectedFile(file);
     setProcessingStatus('idle');
     setExtractedData(null);
+    setTransactions([]);
+    setJobId(null);
     setProgress(0);
   };
 
@@ -28,57 +32,98 @@ function App() {
     setSelectedFile(null);
     setProcessingStatus('idle');
     setExtractedData(null);
+    setTransactions([]);
+    setJobId(null);
     setProgress(0);
   };
 
   const processFile = async () => {
     if (!selectedFile) return;
 
-    // Simulate different processing stages
-    setProcessingStatus('uploading');
-    setProgress(20);
-
-    setTimeout(() => {
-      setProcessingStatus('processing');
-      setProgress(50);
-    }, 1000);
-
-    setTimeout(() => {
-      setProcessingStatus('extracting');
-      setProgress(80);
-    }, 2000);
-
     try {
-      // Simulate bank detection based on filename or random selection
-      const bankTypes = ['sbi', 'hdfc', 'icici'];
-      const detectedBank = bankTypes[Math.floor(Math.random() * bankTypes.length)];
-      
-      const data = await simulateProcessing(detectedBank);
-      
-      setExtractedData(data);
-      setProcessingStatus('completed');
-      setProgress(100);
+      setProcessingStatus('uploading');
+      setProgress(10);
+
+      // Upload and start processing
+      const uploadResponse = await BankStatementAPI.uploadAndProcess(selectedFile);
+      setJobId(uploadResponse.job_id);
       
       toast({
-        title: "Processing Complete!",
-        description: `Successfully extracted ${data.transactionCount} transactions from ${data.bankName}`,
+        title: "Upload Successful",
+        description: "Your PDF has been uploaded and processing has started",
       });
+
+      // Start polling for status updates
+      await BankStatementAPI.pollStatus(
+        uploadResponse.job_id,
+        (statusUpdate) => {
+          setProcessingStatus(statusUpdate.status);
+          setProgress(statusUpdate.progress);
+          
+          if (statusUpdate.status === 'completed') {
+            setExtractedData({
+              bankName: statusUpdate.bank_name,
+              transactionCount: statusUpdate.transaction_count,
+              dateRange: statusUpdate.date_range
+            });
+            
+            // Fetch the actual transactions
+            fetchTransactions(uploadResponse.job_id);
+          } else if (statusUpdate.status === 'error') {
+            toast({
+              title: "Processing Failed",
+              description: statusUpdate.error_message || "Unable to process the PDF file",
+              variant: "destructive"
+            });
+          }
+        }
+      );
+
     } catch (error) {
+      console.error('Processing error:', error);
       setProcessingStatus('error');
       toast({
         title: "Processing Failed",
-        description: "Unable to process the PDF file. Please try again.",
+        description: error.response?.data?.detail || "An error occurred while processing the file",
         variant: "destructive"
       });
     }
   };
 
-  const handleDownloadCSV = () => {
-    if (extractedData?.transactions) {
-      generateCSV(extractedData.transactions, extractedData.bankName);
+  const fetchTransactions = async (currentJobId) => {
+    try {
+      const transactionsData = await BankStatementAPI.getTransactions(currentJobId);
+      setTransactions(transactionsData.transactions);
+      
+      toast({
+        title: "Processing Complete!",
+        description: `Successfully extracted ${transactionsData.total_transactions} transactions`,
+      });
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch transaction data",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDownloadCSV = async () => {
+    if (!jobId) return;
+
+    try {
+      const result = await BankStatementAPI.downloadCSV(jobId);
       toast({
         title: "CSV Downloaded",
-        description: "Your transaction data has been saved as CSV file",
+        description: `Your transaction data has been saved as ${result.filename}`,
+      });
+    } catch (error) {
+      console.error('Download error:', error);
+      toast({
+        title: "Download Failed",
+        description: "Unable to download CSV file",
+        variant: "destructive"
       });
     }
   };
@@ -87,6 +132,8 @@ function App() {
     setSelectedFile(null);
     setProcessingStatus('idle');
     setExtractedData(null);
+    setTransactions([]);
+    setJobId(null);
     setProgress(0);
   };
 
@@ -181,12 +228,12 @@ function App() {
           )}
 
           {/* Transaction Preview */}
-          {extractedData && processingStatus === 'completed' && (
+          {transactions.length > 0 && processingStatus === 'completed' && (
             <div className="space-y-6">
               <TransactionPreview
-                transactions={extractedData.transactions}
+                transactions={transactions}
                 onDownloadCSV={handleDownloadCSV}
-                bankName={extractedData.bankName}
+                bankName={extractedData?.bankName}
               />
               
               {/* Reset Button */}
@@ -199,6 +246,19 @@ function App() {
                   Process Another Statement
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {processingStatus === 'error' && (
+            <div className="text-center">
+              <Button 
+                variant="outline" 
+                onClick={resetProcess}
+                className="px-6"
+              >
+                Try Again
+              </Button>
             </div>
           )}
         </div>
