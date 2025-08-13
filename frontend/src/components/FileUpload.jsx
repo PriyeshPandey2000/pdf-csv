@@ -35,9 +35,18 @@ const FileUpload = ({ onFileSelect, selectedFile, onRemoveFile }) => {
       const file = e.target.files[0];
       if (file.type === 'application/pdf') {
         onFileSelect(file);
+      } else {
+        alert('Please select a PDF file only.');
       }
     }
   }, [onFileSelect]);
+
+  const handleButtonClick = useCallback(() => {
+    const fileInput = document.getElementById('file-upload');
+    if (fileInput) {
+      fileInput.click();
+    }
+  }, []);
 
   if (selectedFile) {
     return (
