@@ -80,7 +80,7 @@ const FileUpload = ({ onFileSelect, selectedFile, onRemoveFile }) => {
 
   return (
     <Card 
-      className={`border-2 border-dashed transition-colors ${
+      className={`border-2 border-dashed transition-colors cursor-pointer ${
         dragActive 
           ? 'border-blue-400 bg-blue-50' 
           : 'border-gray-300 hover:border-gray-400'
@@ -89,6 +89,7 @@ const FileUpload = ({ onFileSelect, selectedFile, onRemoveFile }) => {
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
       onDrop={handleDrop}
+      onClick={handleButtonClick}
     >
       <CardContent className="p-8 text-center">
         <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
@@ -112,7 +113,10 @@ const FileUpload = ({ onFileSelect, selectedFile, onRemoveFile }) => {
             id="file-upload"
           />
           <Button 
-            onClick={handleButtonClick}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleButtonClick();
+            }}
             type="button"
             className="cursor-pointer"
           >
