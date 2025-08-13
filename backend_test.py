@@ -432,7 +432,8 @@ class BackendAPITester:
 
 if __name__ == "__main__":
     tester = BackendAPITester()
-    summary = tester.run_all_tests()
+    tester.run_all_tests()
+    summary = tester.print_test_summary()
     
     # Exit with error code if tests failed
     if summary['failed'] > 0:
