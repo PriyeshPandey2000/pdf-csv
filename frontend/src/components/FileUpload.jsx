@@ -25,6 +25,8 @@ const FileUpload = ({ onFileSelect, selectedFile, onRemoveFile }) => {
       const file = e.dataTransfer.files[0];
       if (file.type === 'application/pdf') {
         onFileSelect(file);
+      } else {
+        alert('Please select a PDF file only.');
       }
     }
   }, [onFileSelect]);
