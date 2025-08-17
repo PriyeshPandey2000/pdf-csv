@@ -58,6 +58,7 @@ export default function HomePage() {
     try {
       setProcessingStatus('uploading');
       setProgress(10);
+      setErrorMessage(''); // Clear any previous error messages
 
       const formData = new FormData();
       formData.append('file', selectedFile);
@@ -84,49 +85,95 @@ export default function HomePage() {
     } catch (error) {
       console.error('Processing error:', error);
       setProcessingStatus('error');
+      setErrorMessage('Failed to upload or process the file. Please try again.');
     }
   };
 
   const pollStatus = async (currentJobId: string) => {
-    const maxRetries = 60;
-    let retries = 0;
-    
-    const poll = async () => {
-      try {
-        const statusResponse = await fetch(`${API_BASE_URL}/api/process-status/${currentJobId}`);
-        const statusData = await statusResponse.json();
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/process-status/${currentJobId}`);
+      
+      if (!response.ok) {
+        throw new Error('Status check failed');
+      }
+
+      const statusData = await response.json();
+      
+      // Update status based on backend response
+      if (statusData.status === 'processing') {
+        setProcessingStatus('processing');
+        setProgress(statusData.progress || 50);
         
-        setProcessingStatus(statusData.status);
-        setProgress(statusData.progress);
+        // Continue polling
+        setTimeout(() => pollStatus(currentJobId), 2000);
+      } else if (statusData.status === 'completed') {
+        setProcessingStatus('completed');
+        setProgress(100);
         
-        if (statusData.status === 'error' && statusData.error_type === 'password_required') {
-          setProcessingStatus('password_required');
-          setErrorMessage(statusData.error_message || 'PDF is password protected. Please enter the password.');
-        } else if (statusData.status === 'completed') {
+        // Extract data directly from status response - no separate results endpoint needed
+        if (statusData.bank_name) {
           setExtractedData({
             bankName: statusData.bank_name,
             transactionCount: statusData.transaction_count,
             dateRange: statusData.date_range
           });
-          
-          // Fetch the actual transactions
-          await fetchTransactions(currentJobId);
-        } else if (statusData.status === 'error') {
-          setProcessingStatus('error');
-          setErrorMessage(statusData.error_message || 'An error occurred while processing the PDF.');
-        } else if (retries < maxRetries) {
-          retries++;
-          setTimeout(poll, 2000);
+        }
+        
+        // Get the actual transactions using the existing endpoint
+        try {
+          const transactionsResponse = await fetch(`${API_BASE_URL}/api/transactions/${currentJobId}`);
+          if (transactionsResponse.ok) {
+            const transactionsData = await transactionsResponse.json();
+            setTransactions(transactionsData.transactions);
+          }
+        } catch (error) {
+          console.error('Error fetching transactions:', error);
+        }
+      } else if (statusData.status === 'error') {
+        // Check if it's a password-related error
+        // Primary check: backend detected password error
+        const isPasswordError = statusData.error_type === 'password_required';
+        
+        // Fallback check: analyze error message for password-related keywords
+        const errorMsg = (statusData.error_message || '').toLowerCase();
+        const passwordKeywords = [
+          'password', 'encrypted', 'decrypt', 'security', 'protected',
+          'authentication', 'authorization', 'wrong password', 'invalid password',
+          'bad decrypt', 'bad password', 'encryption', 'cipher', 'access denied',
+          'permission denied', 'user access', 'owner password', 'pdfencryptederr'
+        ];
+        const hasPasswordKeywords = passwordKeywords.some(keyword => errorMsg.includes(keyword));
+        
+        // Additional heuristic: if processing fails immediately with generic error and no password was provided
+        const noPasswordProvided = !password || password.trim() === '';
+        const isGenericError = errorMsg.includes('error processing pdf') || errorMsg.includes('unable to process');
+        const possiblePasswordIssue = noPasswordProvided && isGenericError;
+        
+        if (isPasswordError || hasPasswordKeywords || possiblePasswordIssue) {
+          setProcessingStatus('password_required');
+          setErrorMessage(
+            statusData.error_message || 
+            'This PDF appears to be password protected. Please enter the password and try again.'
+          );
         } else {
           setProcessingStatus('error');
+          setErrorMessage(statusData.error_message || 'Processing failed. Please try again.');
         }
-      } catch (error) {
-        console.error('Error polling status:', error);
-        setProcessingStatus('error');
+      } else if (statusData.status === 'uploading') {
+        setProcessingStatus('uploading');
+        setProgress(statusData.progress || 10);
+        
+        // Continue polling
+        setTimeout(() => pollStatus(currentJobId), 2000);
+      } else {
+        // Continue polling for other statuses
+        setTimeout(() => pollStatus(currentJobId), 2000);
       }
-    };
-    
-    poll();
+    } catch (error) {
+      console.error('Status polling error:', error);
+      setProcessingStatus('error');
+      setErrorMessage('Unable to check processing status. Please try again.');
+    }
   };
 
   const fetchTransactions = async (currentJobId: string) => {
@@ -233,6 +280,8 @@ export default function HomePage() {
             onRemoveFile={handleRemoveFile}
             password={password}
             onPasswordChange={setPassword}
+            isPasswordRequired={processingStatus === 'password_required'}
+            showPasswordError={processingStatus === 'password_required'}
           />
 
           {/* Process Button */}
@@ -241,11 +290,25 @@ export default function HomePage() {
               <Button 
                 onClick={processFile}
                 size="lg"
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-4 text-lg font-semibold rounded-full transition-all duration-200 transform hover:scale-105"
+                className={`px-8 py-4 text-lg font-semibold rounded-full transition-all duration-200 transform hover:scale-105 ${
+                  processingStatus === 'password_required'
+                    ? 'bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700'
+                    : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
+                }`}
+                disabled={processingStatus === 'password_required' && !password.trim()}
               >
                 <FileText className="h-5 w-5 mr-2" />
-                {processingStatus === 'password_required' ? 'Retry with Password' : 'Process Bank Statement'}
+                {processingStatus === 'password_required' 
+                  ? (password.trim() ? 'Retry with Password' : 'Enter Password to Continue')
+                  : 'Process Bank Statement'
+                }
               </Button>
+              
+              {processingStatus === 'password_required' && !password.trim() && (
+                <p className="text-sm text-orange-400 mt-2">
+                  Please enter the PDF password above to continue
+                </p>
+              )}
             </div>
           )}
 

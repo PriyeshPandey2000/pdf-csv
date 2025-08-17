@@ -65,7 +65,7 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ status, progress, e
         return {
           icon: Lock,
           title: 'Password Required',
-          description: 'This PDF is password protected. Please enter the password and try again.',
+          description: 'This PDF is password protected. Please enter the password in the upload section above.',
           color: 'text-orange-600',
           bgColor: 'bg-orange-50',
           borderColor: 'border-orange-200'
@@ -132,10 +132,18 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ status, progress, e
         )}
 
         {status === 'password_required' && (
-          <div className="mt-3 p-3 bg-orange-100 rounded-md">
-            <p className="text-sm text-orange-800">
-              {errorMessage || 'This PDF is password protected. Please enter the password in the file upload section above and try processing again.'}
-            </p>
+          <div className="mt-3 p-4 bg-orange-100 rounded-lg border border-orange-200">
+            <div className="flex items-start space-x-3">
+              <Lock className="h-5 w-5 text-orange-600 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-orange-800 mb-1">
+                  Password Protection Detected
+                </p>
+                <p className="text-sm text-orange-700">
+                  {errorMessage || 'This PDF is password protected. Please scroll up to the file upload section and enter the password in the highlighted field, then click "Retry with Password".'}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

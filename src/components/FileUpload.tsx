@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState, useCallback } from 'react';
-import { Upload, FileText, X, Lock } from 'lucide-react';
-import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
-import { Input } from './ui/input';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FileText, Upload, X, Lock, AlertCircle } from 'lucide-react';
 
 interface FileUploadProps {
   onFileSelect: (file: File, password?: string) => void;
@@ -12,16 +12,30 @@ interface FileUploadProps {
   onRemoveFile: () => void;
   password?: string;
   onPasswordChange?: (password: string) => void;
+  isPasswordRequired?: boolean;
+  showPasswordError?: boolean;
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({ 
   onFileSelect, 
   selectedFile, 
   onRemoveFile, 
-  password = '', 
-  onPasswordChange 
+  password = '',
+  onPasswordChange,
+  isPasswordRequired = false,
+  showPasswordError = false
 }) => {
   const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus password field when password error occurs
+  useEffect(() => {
+    if (showPasswordError && passwordInputRef.current) {
+      passwordInputRef.current.focus();
+      passwordInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [showPasswordError]);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -61,9 +75,8 @@ const FileUpload: React.FC<FileUploadProps> = ({
   }, [onFileSelect, password]);
 
   const handleButtonClick = useCallback(() => {
-    const fileInput = document.getElementById('file-upload') as HTMLInputElement;
-    if (fileInput) {
-      fileInput.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   }, []);
 
@@ -91,24 +104,64 @@ const FileUpload: React.FC<FileUploadProps> = ({
             </Button>
           </div>
           
-          {/* Optional Password Field */}
-          <div className="mt-4 pt-4 border-t border-gray-700">
+          {/* Password Field - Enhanced for better UX */}
+          <div className={`mt-4 pt-4 border-t border-gray-700 ${
+            isPasswordRequired || showPasswordError 
+              ? 'ring-2 ring-orange-500/50 rounded-lg p-4 bg-orange-500/5' 
+              : ''
+          }`}>
             <div className="flex items-center space-x-2 mb-2">
-              <Lock className="h-4 w-4 text-gray-400" />
-              <label className="text-sm font-medium text-gray-300">
-                Password (optional)
+              <Lock className={`h-4 w-4 ${
+                isPasswordRequired || showPasswordError 
+                  ? 'text-orange-400' 
+                  : 'text-gray-400'
+              }`} />
+              <label className={`text-sm font-medium ${
+                isPasswordRequired || showPasswordError 
+                  ? 'text-orange-300' 
+                  : 'text-gray-300'
+              }`}>
+                {isPasswordRequired || showPasswordError 
+                  ? 'PDF Password Required' 
+                  : 'Password (optional)'
+                }
               </label>
+              {(isPasswordRequired || showPasswordError) && (
+                <AlertCircle className="h-4 w-4 text-orange-400" />
+              )}
             </div>
+            
             <Input
+              ref={passwordInputRef}
               type="password"
-              placeholder="Enter password if PDF is protected"
+              placeholder={
+                isPasswordRequired || showPasswordError 
+                  ? "Enter your PDF password to continue" 
+                  : "Enter password if PDF is protected"
+              }
               value={password}
               onChange={(e) => onPasswordChange?.(e.target.value)}
-              className="border-gray-700 bg-gray-800/50 text-white placeholder:text-gray-500 focus:border-gray-500 focus:ring-gray-500"
+              className={`transition-all duration-200 ${
+                isPasswordRequired || showPasswordError 
+                  ? 'border-orange-500 bg-orange-900/20 text-white placeholder:text-orange-300/70 focus:border-orange-400 focus:ring-orange-400' 
+                  : 'border-gray-700 bg-gray-800/50 text-white placeholder:text-gray-500 focus:border-gray-500 focus:ring-gray-500'
+              }`}
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Leave empty if your PDF is not password protected
-            </p>
+            
+            {showPasswordError ? (
+              <div className="flex items-center mt-2 text-xs text-orange-300">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                <p>This PDF is password protected. Please enter the correct password above.</p>
+              </div>
+            ) : isPasswordRequired ? (
+              <p className="text-xs text-orange-300 mt-1">
+                Please enter the password to unlock this PDF file
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 mt-1">
+                Leave empty if your PDF is not password protected
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -117,11 +170,13 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   return (
     <Card 
-      className={`border-2 border-dashed transition-all duration-200 cursor-pointer backdrop-blur-sm ${
-        dragActive 
-          ? 'border-blue-400/60 bg-blue-500/10' 
-          : 'border-gray-600/40 hover:border-gray-500/60 bg-gray-900/30'
-      }`}
+      className={`
+        border-2 border-dashed transition-all duration-300 ease-in-out cursor-pointer
+        ${dragActive 
+          ? 'border-blue-400 bg-blue-900/20 backdrop-blur-sm' 
+          : 'border-gray-600 bg-gray-900/50 backdrop-blur-sm hover:border-gray-500 hover:bg-gray-900/70'
+        }
+      `}
       onDragEnter={handleDrag}
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
@@ -129,37 +184,36 @@ const FileUpload: React.FC<FileUploadProps> = ({
       onClick={handleButtonClick}
     >
       <CardContent className="p-12 text-center">
-        <Upload className="mx-auto h-12 w-12 text-gray-400 mb-6" />
-        <div className="space-y-3">
-          <h3 className="text-xl font-semibold text-white">
-            Upload Bank Statement PDF
-          </h3>
-          <p className="text-gray-400">
-            Drag and drop your PDF file here, or click to select
-          </p>
-          <p className="text-sm text-gray-500">
-            Supports all major Indian banks (SBI, HDFC, ICICI, Axis, PNB, etc.)
-          </p>
-        </div>
-        <div className="mt-8">
-          <input
-            type="file"
-            accept=".pdf"
-            onChange={handleChange}
-            className="hidden"
-            id="file-upload"
-          />
-          <Button 
-            onClick={(e) => {
-              e.stopPropagation();
-              handleButtonClick();
-            }}
-            type="button"
-            className="bg-gray-800 hover:bg-gray-700 text-white border border-gray-600 px-8 py-3 rounded-full transition-all duration-200 hover:scale-105"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Select PDF File
-          </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf"
+          onChange={handleChange}
+          className="hidden"
+        />
+        
+        <div className="space-y-4">
+          <div className={`
+            p-6 rounded-full mx-auto w-fit transition-all duration-300
+            ${dragActive 
+              ? 'bg-blue-600/20 text-blue-400' 
+              : 'bg-gray-800/50 text-gray-400 group-hover:text-gray-300'
+            }
+          `}>
+            <Upload className="h-12 w-12" />
+          </div>
+          
+          <div className="space-y-2">
+            <h3 className="text-xl font-semibold text-white">
+              Drop your PDF bank statement here
+            </h3>
+            <p className="text-gray-400">
+              or click to browse your files
+            </p>
+            <p className="text-sm text-gray-500">
+              Supports PDF files up to 50MB
+            </p>
+          </div>
         </div>
       </CardContent>
     </Card>

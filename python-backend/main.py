@@ -93,33 +93,31 @@ class PDFBankStatementProcessor:
             transactions = []
             full_text = ""
             
-            with pdfplumber.open(pdf_path, password=password) as pdf:
-                # Extract text from all pages
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        full_text += page_text + "\n"
+            # Try to open PDF with pdfplumber
+            pdf_kwargs = {}
+            if password:
+                pdf_kwargs['password'] = password
                 
-                # Process each page for transactions using universal approach
-                for page in pdf.pages:
-                    page_transactions = []
-                    
-                    # Try to extract tables first
-                    tables = page.extract_tables()
-                    
-                    if tables:
-                        for table in tables:
-                            # Process the entire table as a unit to identify column structure
-                            table_transactions = self._parse_table_universal(table)
-                            page_transactions.extend(table_transactions)
-                    
-                    # Also try text extraction as fallback
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_transactions = self._extract_from_text_universal(page_text)
-                        page_transactions.extend(text_transactions)
-                    
-                    transactions.extend(page_transactions)
+            with pdfplumber.open(pdf_path, **pdf_kwargs) as pdf:
+                # Process all pages
+                for page_num, page in enumerate(pdf.pages, 1):
+                    try:
+                        page_text = page.extract_text()
+                        if page_text:
+                            full_text += page_text + "\n"
+                            
+                            # Extract tables from this page
+                            tables = page.extract_tables()
+                            for table in tables or []:
+                                page_transactions = self._parse_table_universal(table)
+                                transactions.extend(page_transactions)
+                                
+                            # Also try to parse transactions from text directly
+                            text_transactions = self._extract_from_text_universal(page_text)
+                            transactions.extend(text_transactions)
+                            
+                    except Exception as page_error:
+                        continue
             
             # Remove duplicates
             transactions = self._remove_duplicates(transactions)
@@ -158,7 +156,28 @@ class PDFBankStatementProcessor:
             
         except Exception as e:
             error_msg = str(e).lower()
-            if 'password' in error_msg or 'encrypted' in error_msg or 'decrypt' in error_msg:
+            
+            # Enhanced password detection - check for various password-related error patterns
+            password_indicators = [
+                'password', 'encrypted', 'decrypt', 'security', 'protected',
+                'authentication', 'authorization', 'wrong password', 'invalid password',
+                'bad decrypt', 'bad password', 'encryption', 'cipher', 'access denied',
+                'permission denied', 'user access', 'owner password', 'pdfencryptederr'
+            ]
+            
+            # Also check the exception type
+            exception_type = type(e).__name__.lower()
+            password_exception_types = [
+                'pdfencryptederr', 'pdfpassworderror', 'encryptionerror',
+                'permissionerror', 'accesserror'
+            ]
+            
+            is_password_error = (
+                any(indicator in error_msg for indicator in password_indicators) or
+                any(exc_type in exception_type for exc_type in password_exception_types)
+            )
+            
+            if is_password_error:
                 return {
                     'success': False,
                     'error': 'PDF is password protected. Please provide the password.',
@@ -167,6 +186,7 @@ class PDFBankStatementProcessor:
                     'bank_name': 'Unknown Bank',
                     'transaction_count': 0
                 }
+            
             return {
                 'success': False,
                 'error': f'Error processing PDF: {str(e)}',
@@ -475,7 +495,6 @@ class PDFBankStatementProcessor:
             }
             
         except Exception as e:
-            print(f"Error parsing table row: {e}")
             return None
 
     def _extract_from_text(self, text: str) -> List[Dict[str, Any]]:
@@ -573,7 +592,6 @@ class PDFBankStatementProcessor:
             }
             
         except Exception as e:
-            print(f"Error parsing text line: {e}")
             return None
 
     def _is_date(self, text: str) -> bool:
