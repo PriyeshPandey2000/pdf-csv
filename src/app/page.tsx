@@ -8,6 +8,9 @@ import { FileText, ArrowRight, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Transaction } from '@/types';
 
+// Backend API URL
+const API_BASE_URL = 'https://pdf-csv-y9cb.onrender.com';
+
 interface ExtractedData {
   bankName?: string;
   transactionCount?: number;
@@ -63,7 +66,7 @@ export default function HomePage() {
       }
 
       // Upload and start processing
-      const uploadResponse = await fetch('/api/process-statement', {
+      const uploadResponse = await fetch(`${API_BASE_URL}/api/process-statement`, {
         method: 'POST',
         body: formData,
       });
@@ -90,7 +93,7 @@ export default function HomePage() {
     
     const poll = async () => {
       try {
-        const statusResponse = await fetch(`/api/process-status/${currentJobId}`);
+        const statusResponse = await fetch(`${API_BASE_URL}/api/process-status/${currentJobId}`);
         const statusData = await statusResponse.json();
         
         setProcessingStatus(statusData.status);
@@ -128,7 +131,7 @@ export default function HomePage() {
 
   const fetchTransactions = async (currentJobId: string) => {
     try {
-      const transactionsResponse = await fetch(`/api/transactions/${currentJobId}`);
+      const transactionsResponse = await fetch(`${API_BASE_URL}/api/transactions/${currentJobId}`);
       const transactionsData = await transactionsResponse.json();
       setTransactions(transactionsData.transactions);
     } catch (error) {
@@ -140,7 +143,7 @@ export default function HomePage() {
     if (!jobId) return;
 
     try {
-      const response = await fetch(`/api/download-csv/${jobId}`);
+      const response = await fetch(`${API_BASE_URL}/api/download-csv/${jobId}`);
       const blob = await response.blob();
       
       // Create download link
