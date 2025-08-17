@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: pdf-csv-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: cd python-backend && pip install -r requirements.txt
+    startCommand: cd python-backend && python main.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.4
+    healthCheckPath: /health 
