@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react';
-import { CheckCircle, Clock, AlertCircle, FileText, Table, Download } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, FileText, Table, Download, Lock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
@@ -16,12 +16,13 @@ interface ExtractedData {
 }
 
 interface ProcessingStatusProps {
-  status: 'uploading' | 'processing' | 'extracting' | 'completed' | 'error' | 'idle';
+  status: 'uploading' | 'processing' | 'extracting' | 'completed' | 'error' | 'password_required' | 'idle';
   progress: number;
   extractedData?: ExtractedData | null;
+  errorMessage?: string;
 }
 
-const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ status, progress, extractedData }) => {
+const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ status, progress, extractedData, errorMessage }) => {
   const getStatusConfig = () => {
     switch (status) {
       case 'uploading':
@@ -59,6 +60,15 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ status, progress, e
           color: 'text-green-600',
           bgColor: 'bg-green-50',
           borderColor: 'border-green-200'
+        };
+      case 'password_required':
+        return {
+          icon: Lock,
+          title: 'Password Required',
+          description: 'This PDF is password protected. Please enter the password and try again.',
+          color: 'text-orange-600',
+          bgColor: 'bg-orange-50',
+          borderColor: 'border-orange-200'
         };
       case 'error':
         return {
@@ -127,10 +137,18 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ status, progress, e
           </div>
         )}
 
+        {status === 'password_required' && (
+          <div className="mt-3 p-3 bg-orange-100 rounded-md">
+            <p className="text-sm text-orange-800">
+              {errorMessage || 'This PDF is password protected. Please enter the password in the file upload section above and try processing again.'}
+            </p>
+          </div>
+        )}
+
         {status === 'error' && (
           <div className="mt-3 p-3 bg-red-100 rounded-md">
             <p className="text-sm text-red-800">
-              Please ensure the PDF is a valid bank statement and try again.
+              {errorMessage || 'Please ensure the PDF is a valid bank statement and try again.'}
             </p>
           </div>
         )}

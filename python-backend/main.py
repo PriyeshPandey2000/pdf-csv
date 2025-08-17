@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import pdfplumber
@@ -83,20 +83,20 @@ class PDFBankStatementProcessor:
         """Get display name for bank"""
         return self.bank_display_names.get(bank_code or '', 'Unknown Bank')
 
-    def process_pdf(self, pdf_path: str) -> Dict[str, Any]:
+    def process_pdf(self, pdf_path: str, password: Optional[str] = None) -> Dict[str, Any]:
         """Process PDF and extract transactions using pdfplumber"""
         try:
             transactions = []
             full_text = ""
             
-            with pdfplumber.open(pdf_path) as pdf:
+            with pdfplumber.open(pdf_path, password=password) as pdf:
                 # Extract text from all pages
                 for page in pdf.pages:
                     page_text = page.extract_text()
                     if page_text:
                         full_text += page_text + "\n"
                 
-                # Process each page for transactions
+                # Process each page for transactions using universal approach
                 for page in pdf.pages:
                     page_transactions = []
                     
@@ -105,18 +105,15 @@ class PDFBankStatementProcessor:
                     
                     if tables:
                         for table in tables:
-                            for row in table:
-                                if row and len(row) >= 3:
-                                    transaction = self._parse_table_row(row)
-                                    if transaction:
-                                        page_transactions.append(transaction)
+                            # Process the entire table as a unit to identify column structure
+                            table_transactions = self._parse_table_universal(table)
+                            page_transactions.extend(table_transactions)
                     
-                    # Only extract from text if no table transactions were found on this page
-                    if not page_transactions:
-                        page_text = page.extract_text()
-                        if page_text:
-                            text_transactions = self._extract_from_text(page_text)
-                            page_transactions.extend(text_transactions)
+                    # Also try text extraction as fallback
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_transactions = self._extract_from_text_universal(page_text)
+                        page_transactions.extend(text_transactions)
                     
                     transactions.extend(page_transactions)
             
@@ -156,6 +153,16 @@ class PDFBankStatementProcessor:
             }
             
         except Exception as e:
+            error_msg = str(e).lower()
+            if 'password' in error_msg or 'encrypted' in error_msg or 'decrypt' in error_msg:
+                return {
+                    'success': False,
+                    'error': 'PDF is password protected. Please provide the password.',
+                    'error_type': 'password_required',
+                    'transactions': [],
+                    'bank_name': 'Unknown Bank',
+                    'transaction_count': 0
+                }
             return {
                 'success': False,
                 'error': f'Error processing PDF: {str(e)}',
@@ -322,6 +329,19 @@ class PDFBankStatementProcessor:
             if pattern in all_text:
                 return True
         
+        # Check for obvious header patterns that should be excluded
+        if 'date' in all_text and 'transaction' in all_text and 'details' in all_text:
+            return True
+        if 'tran date' in all_text and 'particulars' in all_text:
+            return True
+        
+        # Don't exclude rows that start with dates - these are likely valid transactions
+        if len(cleaned_row) >= 1:
+            first_col = cleaned_row[0].strip()
+            # If first column looks like a date, it's probably a valid transaction
+            if self._is_date(first_col) or self._looks_like_date(first_col):
+                return False
+        
         # Check if first column is just a sequential number (1, 2, 3, etc.) 
         # and second column is a date - this indicates a charge table row
         if len(cleaned_row) >= 2:
@@ -374,59 +394,49 @@ class PDFBankStatementProcessor:
             balance = None
             init_br = ''
             
-            # If we have enough columns, map them directly
-            if len(cleaned_row) >= 6:
-                # Map by column position (typical bank statement format)
-                tran_date = cleaned_row[0] if cleaned_row[0] else ''
-                chq_no = cleaned_row[1] if cleaned_row[1] else ''
-                particulars = cleaned_row[2] if cleaned_row[2] else ''
+            # Try to identify columns by content type first, then by position
+            for i, cell in enumerate(cleaned_row):
+                if not cell:
+                    continue
                 
-                # Handle debit column (column 3)
-                if len(cleaned_row) > 3 and cleaned_row[3] and self._is_amount(cleaned_row[3]):
-                    debit_amount = self._clean_amount(cleaned_row[3])
-                
-                # Handle credit column (column 4)  
-                if len(cleaned_row) > 4 and cleaned_row[4] and self._is_amount(cleaned_row[4]):
-                    credit_amount = self._clean_amount(cleaned_row[4])
-                
-                # Handle balance column (column 5)
-                if len(cleaned_row) > 5 and cleaned_row[5] and self._is_amount(cleaned_row[5]):
-                    balance = self._clean_amount(cleaned_row[5])
-                
-                # Handle Init.Br column (column 6)
-                if len(cleaned_row) > 6 and cleaned_row[6]:
-                    init_br = cleaned_row[6]
-                    
-            else:
-                # Fallback: try to identify columns by content type
-                for i, cell in enumerate(cleaned_row):
-                    if not cell:
-                        continue
-                    
-                    # Check if it's a date (and we don't have one yet)
-                    if not tran_date and self._is_date(cell):
-                        tran_date = cell
-                    # Check if it's a numeric code (potential check number or branch)
-                    elif cell.isdigit() and len(cell) >= 3:
-                        if not chq_no and len(cell) <= 8:  # Check numbers are typically shorter
-                            chq_no = cell
-                        elif not init_br:  # Branch codes can be longer
-                            init_br = cell
-                    # Check if it's an amount
-                    elif self._is_amount(cell):
-                        amount_val = self._clean_amount(cell)
-                        if balance is None:  # First amount could be balance
+                # Check if it's a date (and we don't have one yet)
+                if not tran_date and (self._is_date(cell) or self._looks_like_date(cell)):
+                    tran_date = cell
+                # Check if it's an amount
+                elif self._is_amount(cell):
+                    amount_val = self._clean_amount(cell)
+                    # Determine if it's debit, credit, or balance based on position and content
+                    if amount_val > 0:
+                        # For HDFC format: DATE | DETAILS | REF | DEBIT | CREDIT | BALANCE
+                        if i == 3:  # Column 3 is typically debit
+                            debit_amount = amount_val
+                        elif i == 4:  # Column 4 is typically credit
+                            credit_amount = amount_val
+                        elif i == 5:  # Column 5 is typically balance
+                            balance = amount_val
+                        elif balance is None:  # First amount found could be balance
                             balance = amount_val
                         elif debit_amount is None:  # Second amount could be debit
                             debit_amount = amount_val
                         elif credit_amount is None:  # Third amount could be credit
                             credit_amount = amount_val
-                    # Everything else goes to particulars
+                # Check if it contains amount with signs like "-301.00" or "+135.00"
+                elif (cell.startswith('-') or cell.startswith('+')) and self._is_amount(cell[1:]):
+                    amount_val = self._clean_amount(cell[1:])
+                    if cell.startswith('-'):
+                        debit_amount = amount_val
                     else:
-                        if particulars:
-                            particulars += ' ' + cell
-                        else:
-                            particulars = cell
+                        credit_amount = amount_val
+                # Check if it's a reference number (mix of letters and numbers)
+                elif not chq_no and (cell.startswith('UPI-') or cell.isdigit() or 
+                                   (len(cell) >= 5 and any(c.isdigit() for c in cell))):
+                    chq_no = cell
+                # Everything else goes to particulars
+                else:
+                    if particulars:
+                        particulars += ' ' + cell
+                    else:
+                        particulars = cell
             
             # Filter out summary rows before validation
             if self._is_summary_row(particulars):
@@ -574,6 +584,18 @@ class PDFBankStatementProcessor:
         ]
         return any(re.match(pattern, text.strip()) for pattern in date_patterns)
 
+    def _looks_like_date(self, text: str) -> bool:
+        """Check if text looks like a date with more flexible patterns"""
+        import re
+        text = text.strip()
+        # Check for patterns like "01 Jun, 2025" or "07 Jun, 2025"
+        flexible_patterns = [
+            r'\d{1,2}\s+[A-Za-z]{3},?\s+\d{4}',
+            r'[A-Za-z]{3}\s+\d{1,2},?\s+\d{4}',
+            r'\d{1,2}\s*[A-Za-z]{3}\s*,?\s*\d{4}'
+        ]
+        return any(re.search(pattern, text) for pattern in flexible_patterns)
+
     def _contains_date(self, text: str) -> bool:
         """Check if text contains a date"""
         import re
@@ -589,14 +611,22 @@ class PDFBankStatementProcessor:
     def _is_amount(self, text: str) -> bool:
         """Check if text looks like an amount"""
         import re
+        text = text.strip()
+        
+        # Handle amounts with +/- signs
+        if text.startswith(('+', '-')):
+            text = text[1:]
+        
         # Remove common currency symbols and commas
-        cleaned = re.sub(r'[₹$,\s]', '', text.strip())
+        cleaned = re.sub(r'[₹$,\s]', '', text)
         
         # Check for amount patterns
         amount_patterns = [
             r'^\d+\.?\d*$',  # Simple number
             r'^\(\d+\.?\d*\)$',  # Negative in parentheses
-            r'^\d{1,3}(,\d{3})*\.?\d*$'  # With comma separators
+            r'^\d{1,3}(,\d{3})*\.?\d*$',  # With comma separators
+            r'^\d+\.\d{2}$',  # Decimal amounts like 301.00
+            r'^\d{1,3}(,\d{3})*\.\d{2}$'  # Large amounts with commas like 69,201.94
         ]
         
         return any(re.match(pattern, cleaned) for pattern in amount_patterns)
@@ -613,7 +643,13 @@ class PDFBankStatementProcessor:
         
         # Remove currency symbols, spaces, and commas
         import re
-        cleaned = re.sub(r'[₹$,\s]', '', amount_str.strip())
+        original = amount_str.strip()
+        
+        # Handle + signs at the beginning
+        if original.startswith('+'):
+            original = original[1:]
+        
+        cleaned = re.sub(r'[₹$,\s]', '', original)
         
         # Handle parentheses for negative amounts (but we'll make them positive)
         is_negative = False
@@ -641,11 +677,19 @@ class PDFBankStatementProcessor:
         import re
         date_str = date_str.strip()
         
+        # Month name to number mapping
+        month_map = {
+            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+            'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+        }
+        
         # Try different date formats
         formats = [
             (r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', 'DD-MM-YYYY'),
             (r'(\d{1,2})[-/](\d{1,2})[-/](\d{2})', 'DD-MM-YY'),
             (r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', 'YYYY-MM-DD'),
+            # Handle "01 Jun, 2025" format
+            (r'(\d{1,2})\s+([A-Za-z]{3}),?\s+(\d{4})', 'DD-MMM-YYYY'),
         ]
         
         for pattern, format_type in formats:
@@ -659,6 +703,12 @@ class PDFBankStatementProcessor:
                     return f"{match.group(1).zfill(2)}-{match.group(2).zfill(2)}-{year}"
                 elif format_type == 'YYYY-MM-DD':
                     return f"{match.group(3).zfill(2)}-{match.group(2).zfill(2)}-{match.group(1)}"
+                elif format_type == 'DD-MMM-YYYY':
+                    day = match.group(1).zfill(2)
+                    month_name = match.group(2).lower()
+                    year = match.group(3)
+                    month_num = month_map.get(month_name, '01')
+                    return f"{day}-{month_num}-{year}"
         
         return date_str
 
@@ -716,11 +766,265 @@ class PDFBankStatementProcessor:
         
         return unique_transactions
 
+    def _parse_table_universal(self, table: List[List[str]]) -> List[Dict[str, Any]]:
+        """Universal table parsing that identifies column structure automatically"""
+        if not table or len(table) < 2:
+            return []
+        
+        transactions = []
+        header_row_idx = -1
+        column_mapping = {}
+        
+        # Step 1: Find the header row and identify columns
+        for i, row in enumerate(table):
+            if not row:
+                continue
+            
+            # Clean the row
+            cleaned_row = [cell.strip().lower() if cell else '' for cell in row]
+            row_text = ' '.join(cleaned_row)
+            
+            # Check if this looks like a header row
+            date_indicators = ['date', 'tran date', 'transaction date', 'txn date']
+            amount_indicators = ['debit', 'credit', 'balance', 'amount', 'withdrawal', 'deposit']
+            desc_indicators = ['particulars', 'description', 'details', 'transaction details', 'narration']
+            
+            date_found = any(indicator in row_text for indicator in date_indicators)
+            amount_found = any(indicator in row_text for indicator in amount_indicators)
+            desc_found = any(indicator in row_text for indicator in desc_indicators)
+            
+            if date_found and (amount_found or desc_found):
+                header_row_idx = i
+                # Map columns based on header content
+                for j, cell in enumerate(cleaned_row):
+                    if any(indicator in cell for indicator in date_indicators):
+                        column_mapping['date'] = j
+                    elif 'debit' in cell or 'withdrawal' in cell:
+                        column_mapping['debit'] = j
+                    elif 'credit' in cell or 'deposit' in cell:
+                        column_mapping['credit'] = j
+                    elif 'balance' in cell:
+                        column_mapping['balance'] = j
+                    elif any(indicator in cell for indicator in desc_indicators):
+                        column_mapping['description'] = j
+                    elif 'reference' in cell or 'ref' in cell or 'chq' in cell or 'cheque' in cell:
+                        column_mapping['reference'] = j
+                break
+        
+        # Step 2: If no clear header found, try to infer columns from data patterns
+        if header_row_idx == -1:
+            column_mapping = self._infer_columns_from_data(table)
+        
+        # Step 3: Process data rows
+        start_row = max(0, header_row_idx + 1) if header_row_idx >= 0 else 0
+        
+        for i in range(start_row, len(table)):
+            row = table[i]
+            if not row or len(row) < 3:
+                continue
+            
+            transaction = self._extract_transaction_from_row(row, column_mapping)
+            if transaction:
+                transactions.append(transaction)
+        
+        return transactions
+
+    def _infer_columns_from_data(self, table: List[List[str]]) -> Dict[str, int]:
+        """Infer column positions by analyzing data patterns"""
+        column_mapping = {}
+        
+        if not table:
+            return column_mapping
+        
+        # Analyze first few data rows to identify patterns
+        sample_rows = table[:10]
+        
+        for row in sample_rows:
+            if not row or len(row) < 3:
+                continue
+            
+            for i, cell in enumerate(row):
+                if not cell or not cell.strip():
+                    continue
+                
+                cell = cell.strip()
+                
+                # Look for date column
+                if 'date' not in column_mapping and (self._is_date(cell) or self._looks_like_date(cell)):
+                    column_mapping['date'] = i
+                
+                # Look for amount columns
+                elif self._is_amount(cell):
+                    # Try to determine if it's debit, credit, or balance based on position
+                    if i == 3 and 'debit' not in column_mapping:
+                        column_mapping['debit'] = i
+                    elif i == 4 and 'credit' not in column_mapping:
+                        column_mapping['credit'] = i
+                    elif i == 5 and 'balance' not in column_mapping:
+                        column_mapping['balance'] = i
+                    elif 'balance' not in column_mapping:
+                        column_mapping['balance'] = i
+                
+                # Look for reference/check number column
+                elif ('reference' not in column_mapping and 
+                      (cell.startswith('UPI-') or cell.isdigit() or 
+                       (len(cell) >= 5 and any(c.isdigit() for c in cell)))):
+                    column_mapping['reference'] = i
+        
+        # Description is usually the longest text column that's not date or reference
+        for row in sample_rows:
+            if not row:
+                continue
+            for i, cell in enumerate(row):
+                if (cell and len(cell.strip()) > 10 and 
+                    i not in column_mapping.values() and
+                    not self._is_date(cell) and not self._is_amount(cell) and
+                    'description' not in column_mapping):
+                    column_mapping['description'] = i
+                    break
+        
+        return column_mapping
+
+    def _extract_transaction_from_row(self, row: List[str], column_mapping: Dict[str, int]) -> Optional[Dict[str, Any]]:
+        """Extract transaction data from a row using column mapping"""
+        if not row:
+            return None
+        
+        # Initialize transaction data
+        transaction_data = {
+            'date': '',
+            'chq_no': '',
+            'description': '',
+            'debit': None,
+            'credit': None,
+            'balance': None,
+            'init_br': ''
+        }
+        
+        # Extract data based on column mapping
+        for field, col_idx in column_mapping.items():
+            if col_idx < len(row) and row[col_idx]:
+                cell_value = row[col_idx].strip()
+                
+                if field == 'date':
+                    transaction_data['date'] = self._normalize_date(cell_value)
+                elif field == 'description':
+                    transaction_data['description'] = cell_value
+                elif field == 'reference':
+                    transaction_data['chq_no'] = cell_value
+                elif field in ['debit', 'credit', 'balance']:
+                    if self._is_amount(cell_value):
+                        amount = self._clean_amount(cell_value)
+                        transaction_data[field] = amount
+        
+        # If no column mapping worked, try the old method as fallback
+        if not any([transaction_data['date'], transaction_data['description']]):
+            return self._parse_table_row(row)
+        
+        # Validate transaction
+        if not transaction_data['description'] and not transaction_data['date']:
+            return None
+        
+        # Filter out summary rows
+        if self._is_summary_row(transaction_data['description']):
+            return None
+        
+        # Must have at least one amount
+        if (transaction_data['debit'] is None and 
+            transaction_data['credit'] is None and 
+            transaction_data['balance'] is None):
+            return None
+        
+        return transaction_data
+
+    def _extract_from_text_universal(self, text: str) -> List[Dict[str, Any]]:
+        """Universal text extraction that looks for transaction patterns"""
+        transactions = []
+        lines = text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if len(line) < 15:  # Skip very short lines
+                continue
+            
+            # Look for lines that contain both date and amount patterns
+            if self._contains_date(line) and self._contains_amount(line):
+                transaction = self._parse_transaction_line_universal(line)
+                if transaction:
+                    transactions.append(transaction)
+        
+        return transactions
+
+    def _parse_transaction_line_universal(self, line: str) -> Optional[Dict[str, Any]]:
+        """Parse a single line for transaction data using universal patterns"""
+        import re
+        
+        # Split line into potential components
+        parts = re.split(r'\s{2,}|\t', line)  # Split on multiple spaces or tabs
+        
+        transaction_data = {
+            'date': '',
+            'chq_no': '',
+            'description': '',
+            'debit': None,
+            'credit': None,
+            'balance': None,
+            'init_br': ''
+        }
+        
+        description_parts = []
+        
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            
+            # Check if it's a date
+            if not transaction_data['date'] and (self._is_date(part) or self._looks_like_date(part)):
+                transaction_data['date'] = self._normalize_date(part)
+            # Check if it's an amount
+            elif self._is_amount(part):
+                amount = self._clean_amount(part)
+                # Try to determine type based on context or position
+                if part.startswith('-') and transaction_data['debit'] is None:
+                    transaction_data['debit'] = amount
+                elif part.startswith('+') and transaction_data['credit'] is None:
+                    transaction_data['credit'] = amount
+                elif transaction_data['balance'] is None:
+                    transaction_data['balance'] = amount
+                elif transaction_data['debit'] is None:
+                    transaction_data['debit'] = amount
+            # Check if it's a reference
+            elif (not transaction_data['chq_no'] and 
+                  (part.startswith('UPI-') or part.isdigit() or 
+                   (len(part) >= 5 and any(c.isdigit() for c in part)))):
+                transaction_data['chq_no'] = part
+            # Everything else is description
+            else:
+                description_parts.append(part)
+        
+        # Combine description parts
+        transaction_data['description'] = ' '.join(description_parts)
+        
+        # Validate and filter
+        if not transaction_data['description'] and not transaction_data['date']:
+            return None
+        
+        if self._is_summary_row(transaction_data['description']):
+            return None
+        
+        if (transaction_data['debit'] is None and 
+            transaction_data['credit'] is None and 
+            transaction_data['balance'] is None):
+            return None
+        
+        return transaction_data
+
 # Initialize processor
 processor = PDFBankStatementProcessor()
 
 @app.post("/api/process-statement")
-async def process_statement(file: UploadFile = File(...)):
+async def process_statement(file: UploadFile = File(...), password: Optional[str] = Form(None)):
     """Process uploaded PDF statement"""
     
     # Validate file
@@ -760,7 +1064,7 @@ async def process_statement(file: UploadFile = File(...)):
         })
         
         # Process PDF
-        result = processor.process_pdf(str(temp_file_path))
+        result = processor.process_pdf(str(temp_file_path), password)
         
         if result['success']:
             # Store result
@@ -785,9 +1089,11 @@ async def process_statement(file: UploadFile = File(...)):
             })
         else:
             # Processing failed
+            error_type = result.get('error_type', 'processing_error')
             jobs_storage[job_id].update({
                 'status': 'error',
                 'error_message': result.get('error', 'Unknown error occurred'),
+                'error_type': error_type,
                 'updated_at': datetime.now().isoformat()
             })
         
@@ -837,7 +1143,8 @@ async def get_process_status(job_id: str):
         'transaction_count': job.get('transaction_count'),
         'date_range': job.get('date_range'),
         'message': message,
-        'error_message': job.get('error_message')
+        'error_message': job.get('error_message'),
+        'error_type': job.get('error_type')
     }
 
 @app.get("/api/transactions/{job_id}")

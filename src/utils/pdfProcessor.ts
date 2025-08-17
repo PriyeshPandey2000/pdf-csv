@@ -307,7 +307,7 @@ export class PDFBankStatementProcessor {
               existing.amount === transaction.amount
             );
             
-            if (!isDuplicate && transaction.amount > 0) {
+            if (!isDuplicate && transaction.amount && transaction.amount > 0) {
               transactions.push(transaction);
             }
           }

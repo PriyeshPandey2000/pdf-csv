@@ -20,28 +20,34 @@ interface ExtractedData {
 
 export default function HomePage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [processingStatus, setProcessingStatus] = useState<'idle' | 'uploading' | 'processing' | 'completed' | 'error'>('idle');
+  const [password, setPassword] = useState<string>('');
+  const [processingStatus, setProcessingStatus] = useState<'idle' | 'uploading' | 'processing' | 'completed' | 'error' | 'password_required'>('idle');
   const [progress, setProgress] = useState(0);
   const [jobId, setJobId] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = (file: File, filePassword?: string) => {
     setSelectedFile(file);
+    setPassword(filePassword || '');
     setProcessingStatus('idle');
     setExtractedData(null);
     setTransactions([]);
     setJobId(null);
     setProgress(0);
+    setErrorMessage('');
   };
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
+    setPassword('');
     setProcessingStatus('idle');
     setExtractedData(null);
     setTransactions([]);
     setJobId(null);
     setProgress(0);
+    setErrorMessage('');
   };
 
   const processFile = async () => {
@@ -53,6 +59,9 @@ export default function HomePage() {
 
       const formData = new FormData();
       formData.append('file', selectedFile);
+      if (password) {
+        formData.append('password', password);
+      }
 
       // Upload and start processing
       const uploadResponse = await fetch('/api/process-statement', {
@@ -88,7 +97,10 @@ export default function HomePage() {
         setProcessingStatus(statusData.status);
         setProgress(statusData.progress);
         
-        if (statusData.status === 'completed') {
+        if (statusData.status === 'error' && statusData.error_type === 'password_required') {
+          setProcessingStatus('password_required');
+          setErrorMessage(statusData.error_message || 'PDF is password protected. Please enter the password.');
+        } else if (statusData.status === 'completed') {
           setExtractedData({
             bankName: statusData.bank_name,
             transactionCount: statusData.transaction_count,
@@ -99,6 +111,7 @@ export default function HomePage() {
           await fetchTransactions(currentJobId);
         } else if (statusData.status === 'error') {
           setProcessingStatus('error');
+          setErrorMessage(statusData.error_message || 'An error occurred while processing the PDF.');
         } else if (retries < maxRetries) {
           retries++;
           setTimeout(poll, 2000);
@@ -147,11 +160,13 @@ export default function HomePage() {
 
   const resetProcess = () => {
     setSelectedFile(null);
+    setPassword('');
     setProcessingStatus('idle');
     setExtractedData(null);
     setTransactions([]);
     setJobId(null);
     setProgress(0);
+    setErrorMessage('');
   };
 
   return (
@@ -219,10 +234,12 @@ export default function HomePage() {
             onFileSelect={handleFileSelect}
             selectedFile={selectedFile}
             onRemoveFile={handleRemoveFile}
+            password={password}
+            onPasswordChange={setPassword}
           />
 
           {/* Process Button */}
-          {selectedFile && processingStatus === 'idle' && (
+          {selectedFile && (processingStatus === 'idle' || processingStatus === 'password_required') && (
             <div className="text-center">
               <Button 
                 onClick={processFile}
@@ -230,7 +247,7 @@ export default function HomePage() {
                 className="bg-blue-600 hover:bg-blue-700 px-8 py-3 text-lg"
               >
                 <FileText className="h-5 w-5 mr-2" />
-                Process Bank Statement
+                {processingStatus === 'password_required' ? 'Retry with Password' : 'Process Bank Statement'}
               </Button>
             </div>
           )}
@@ -241,6 +258,7 @@ export default function HomePage() {
               status={processingStatus}
               progress={progress}
               extractedData={extractedData}
+              errorMessage={errorMessage}
             />
           )}
 

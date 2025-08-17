@@ -1,17 +1,26 @@
 'use client'
 
 import React, { useState, useCallback } from 'react';
-import { Upload, FileText, X } from 'lucide-react';
+import { Upload, FileText, X, Lock } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
+import { Input } from './ui/input';
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File, password?: string) => void;
   selectedFile: File | null;
   onRemoveFile: () => void;
+  password?: string;
+  onPasswordChange?: (password: string) => void;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, selectedFile, onRemoveFile }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ 
+  onFileSelect, 
+  selectedFile, 
+  onRemoveFile, 
+  password = '', 
+  onPasswordChange 
+}) => {
   const [dragActive, setDragActive] = useState(false);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -32,24 +41,24 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, selectedFile, onR
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       if (file.type === 'application/pdf') {
-        onFileSelect(file);
+        onFileSelect(file, password);
       } else {
         alert('Please select a PDF file only.');
       }
     }
-  }, [onFileSelect]);
+  }, [onFileSelect, password]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (file.type === 'application/pdf') {
-        onFileSelect(file);
+        onFileSelect(file, password);
       } else {
         alert('Please select a PDF file only.');
       }
     }
-  }, [onFileSelect]);
+  }, [onFileSelect, password]);
 
   const handleButtonClick = useCallback(() => {
     const fileInput = document.getElementById('file-upload') as HTMLInputElement;
@@ -80,6 +89,26 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, selectedFile, onR
             >
               <X className="h-4 w-4" />
             </Button>
+          </div>
+          
+          {/* Optional Password Field */}
+          <div className="mt-4 pt-4 border-t border-green-200">
+            <div className="flex items-center space-x-2 mb-2">
+              <Lock className="h-4 w-4 text-green-600" />
+              <label className="text-sm font-medium text-green-800">
+                Password (optional)
+              </label>
+            </div>
+            <Input
+              type="password"
+              placeholder="Enter password if PDF is protected"
+              value={password}
+              onChange={(e) => onPasswordChange?.(e.target.value)}
+              className="border-green-300 focus:border-green-500 focus:ring-green-500"
+            />
+            <p className="text-xs text-green-600 mt-1">
+              Leave empty if your PDF is not password protected
+            </p>
           </div>
         </CardContent>
       </Card>
