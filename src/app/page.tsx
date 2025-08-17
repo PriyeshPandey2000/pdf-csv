@@ -4,8 +4,7 @@ import React, { useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import ProcessingStatus from '@/components/ProcessingStatus';
 import TransactionPreview from '@/components/TransactionPreview';
-import { FileText, Zap, Shield, Download } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { FileText, ArrowRight, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Transaction } from '@/types';
 
@@ -170,61 +169,56 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-4">
-            <div className="p-3 bg-blue-600 rounded-xl">
-              <FileText className="h-8 w-8 text-white" />
-            </div>
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-900/20 via-black to-gray-900/20"></div>
+      <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-full blur-3xl -translate-x-48 -translate-y-48"></div>
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-full blur-3xl translate-x-48 translate-y-48"></div>
+      
+      <div className="relative z-10 container mx-auto px-4 py-8 max-w-6xl">
+        {/* Header with modern hero section */}
+        <div className="text-center mb-16 pt-12">
+          {/* Top badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-gray-800 bg-gray-900/50 backdrop-blur-sm text-gray-300 text-sm mb-8">
+            <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+            Transform your bank statements instantly
+            <ArrowRight className="w-4 h-4" />
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            PDF Bank Statement to CSV Converter
+          
+          {/* Main headline */}
+          <h1 className="text-5xl md:text-7xl font-light mb-6 bg-gradient-to-r from-white via-gray-100 to-gray-300 bg-clip-text text-transparent leading-tight">
+            Convert PDF to CSV
+            <br />
+            <span className="text-4xl md:text-6xl">without the hassle</span>
           </h1>
-          <p className="text-xl text-gray-600 mb-6 max-w-3xl mx-auto">
-            Convert your Indian bank statements from PDF to CSV format instantly. 
-            Works with all major banks regardless of their column formats.
+          
+          {/* Subtitle */}
+          <p className="text-md md:text-xl text-gray-400 mb-8 max-w-4xl mx-auto leading-relaxed">
+            Transform your Indian bank statements into clean CSV files instantly. 
+            <br className="hidden md:block" />
+            No coding skills needed. Works with all major banks seamlessly.
           </p>
           
-          {/* Features */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 mb-12">
-            <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
-              <CardContent className="p-6 text-center">
-                <div className="p-2 bg-green-100 rounded-lg w-fit mx-auto mb-3">
-                  <Zap className="h-6 w-6 text-green-600" />
-                </div>
-                <h3 className="font-semibold text-gray-900 mb-2">Universal Support</h3>
-                <p className="text-sm text-gray-600">
-                  Works with all Indian banks - SBI, HDFC, ICICI, Axis, PNB and more
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
-              <CardContent className="p-6 text-center">
-                <div className="p-2 bg-purple-100 rounded-lg w-fit mx-auto mb-3">
-                  <Shield className="h-6 w-6 text-purple-600" />
-                </div>
-                <h3 className="font-semibold text-gray-900 mb-2">Format Independent</h3>
-                <p className="text-sm text-gray-600">
-                  Extracts all transactions regardless of column headings or PDF layout
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
-              <CardContent className="p-6 text-center">
-                <div className="p-2 bg-orange-100 rounded-lg w-fit mx-auto mb-3">
-                  <Download className="h-6 w-6 text-orange-600" />
-                </div>
-                <h3 className="font-semibold text-gray-900 mb-2">Instant Download</h3>
-                <p className="text-sm text-gray-600">
-                  Preview transactions and download clean CSV files immediately
-                </p>
-              </CardContent>
-            </Card>
+          {/* CTA Buttons */}
+          {/* 
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+            <Button 
+              size="lg"
+              className="bg-white text-black hover:bg-gray-100 px-8 py-4 text-lg font-semibold rounded-full transition-all duration-200 transform hover:scale-105"
+            >
+              <FileText className="w-5 h-5 mr-2" />
+              Start for free
+            </Button>
+            <Button 
+              variant="ghost"
+              size="lg"
+              className="text-white border border-gray-700 hover:bg-gray-800 px-8 py-4 text-lg rounded-full transition-all duration-200"
+            >
+              <Play className="w-5 h-5 mr-2" />
+              Watch Demo
+            </Button>
           </div>
+          */}
         </div>
 
         {/* Main Content */}
@@ -244,7 +238,7 @@ export default function HomePage() {
               <Button 
                 onClick={processFile}
                 size="lg"
-                className="bg-blue-600 hover:bg-blue-700 px-8 py-3 text-lg"
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-4 text-lg font-semibold rounded-full transition-all duration-200 transform hover:scale-105"
               >
                 <FileText className="h-5 w-5 mr-2" />
                 {processingStatus === 'password_required' ? 'Retry with Password' : 'Process Bank Statement'}
@@ -276,7 +270,7 @@ export default function HomePage() {
                 <Button 
                   variant="outline" 
                   onClick={resetProcess}
-                  className="px-6"
+                  className="px-6 border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white rounded-full"
                 >
                   Process Another Statement
                 </Button>
@@ -290,7 +284,7 @@ export default function HomePage() {
               <Button 
                 variant="outline" 
                 onClick={resetProcess}
-                className="px-6"
+                className="px-6 border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white rounded-full"
               >
                 Try Again
               </Button>
@@ -299,9 +293,9 @@ export default function HomePage() {
         </div>
 
         {/* Footer */}
-        <div className="mt-16 text-center text-sm text-gray-500">
+        <div className="mt-20 text-center text-sm text-gray-500">
           <p>
-            Secure • Fast • Reliable | Support for all major Indian banks
+            Secure • Fast • Reliable | Supporting all major Indian banks
           </p>
         </div>
       </div>

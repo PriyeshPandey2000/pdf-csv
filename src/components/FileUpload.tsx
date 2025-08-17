@@ -69,14 +69,14 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   if (selectedFile) {
     return (
-      <Card className="border-2 border-dashed border-green-300 bg-green-50">
+      <Card className="border-2 border-dashed border-green-500/30 bg-gray-900/50 backdrop-blur-sm">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <FileText className="h-8 w-8 text-green-600" />
+              <FileText className="h-8 w-8 text-green-400" />
               <div>
-                <p className="font-medium text-green-800">{selectedFile.name}</p>
-                <p className="text-sm text-green-600">
+                <p className="font-medium text-white">{selectedFile.name}</p>
+                <p className="text-sm text-gray-400">
                   {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                 </p>
               </div>
@@ -85,17 +85,17 @@ const FileUpload: React.FC<FileUploadProps> = ({
               variant="ghost"
               size="sm"
               onClick={onRemoveFile}
-              className="text-green-600 hover:text-green-800 hover:bg-green-100"
+              className="text-gray-400 hover:text-white hover:bg-gray-800 rounded-full"
             >
               <X className="h-4 w-4" />
             </Button>
           </div>
           
           {/* Optional Password Field */}
-          <div className="mt-4 pt-4 border-t border-green-200">
+          <div className="mt-4 pt-4 border-t border-gray-700">
             <div className="flex items-center space-x-2 mb-2">
-              <Lock className="h-4 w-4 text-green-600" />
-              <label className="text-sm font-medium text-green-800">
+              <Lock className="h-4 w-4 text-gray-400" />
+              <label className="text-sm font-medium text-gray-300">
                 Password (optional)
               </label>
             </div>
@@ -104,9 +104,9 @@ const FileUpload: React.FC<FileUploadProps> = ({
               placeholder="Enter password if PDF is protected"
               value={password}
               onChange={(e) => onPasswordChange?.(e.target.value)}
-              className="border-green-300 focus:border-green-500 focus:ring-green-500"
+              className="border-gray-700 bg-gray-800/50 text-white placeholder:text-gray-500 focus:border-gray-500 focus:ring-gray-500"
             />
-            <p className="text-xs text-green-600 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               Leave empty if your PDF is not password protected
             </p>
           </div>
@@ -117,10 +117,10 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   return (
     <Card 
-      className={`border-2 border-dashed transition-colors cursor-pointer ${
+      className={`border-2 border-dashed transition-all duration-200 cursor-pointer backdrop-blur-sm ${
         dragActive 
-          ? 'border-blue-400 bg-blue-50' 
-          : 'border-gray-300 hover:border-gray-400'
+          ? 'border-blue-400/60 bg-blue-500/10' 
+          : 'border-gray-600/40 hover:border-gray-500/60 bg-gray-900/30'
       }`}
       onDragEnter={handleDrag}
       onDragLeave={handleDrag}
@@ -128,20 +128,20 @@ const FileUpload: React.FC<FileUploadProps> = ({
       onDrop={handleDrop}
       onClick={handleButtonClick}
     >
-      <CardContent className="p-8 text-center">
-        <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium text-gray-900">
+      <CardContent className="p-12 text-center">
+        <Upload className="mx-auto h-12 w-12 text-gray-400 mb-6" />
+        <div className="space-y-3">
+          <h3 className="text-xl font-semibold text-white">
             Upload Bank Statement PDF
           </h3>
-          <p className="text-sm text-gray-500">
+          <p className="text-gray-400">
             Drag and drop your PDF file here, or click to select
           </p>
-          <p className="text-xs text-gray-400">
+          <p className="text-sm text-gray-500">
             Supports all major Indian banks (SBI, HDFC, ICICI, Axis, PNB, etc.)
           </p>
         </div>
-        <div className="mt-6">
+        <div className="mt-8">
           <input
             type="file"
             accept=".pdf"
@@ -155,8 +155,9 @@ const FileUpload: React.FC<FileUploadProps> = ({
               handleButtonClick();
             }}
             type="button"
-            className="cursor-pointer"
+            className="bg-gray-800 hover:bg-gray-700 text-white border border-gray-600 px-8 py-3 rounded-full transition-all duration-200 hover:scale-105"
           >
+            <FileText className="w-4 h-4 mr-2" />
             Select PDF File
           </Button>
         </div>
