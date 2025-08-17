@@ -13,13 +13,11 @@ import { Transaction } from '@/types';
 interface TransactionPreviewProps {
   transactions: Transaction[];
   onDownloadCSV: () => void;
-  bankName?: string;
 }
 
 const TransactionPreview: React.FC<TransactionPreviewProps> = ({ 
   transactions, 
-  onDownloadCSV, 
-  bankName 
+  onDownloadCSV
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -132,18 +130,8 @@ const TransactionPreview: React.FC<TransactionPreviewProps> = ({
           </Select>
         </div>
 
-        {/* Summary */}
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-          <div className="text-sm">
-            <span className="font-medium">Net Amount: </span>
-            <span className={`font-semibold ${getTotalAmount() >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatAmount(getTotalAmount())}
-            </span>
-          </div>
-          {bankName && (
-            <Badge variant="secondary">{bankName}</Badge>
-          )}
-        </div>
+        {/* Summary - Remove Net Amount and Bank Name */}
+        {/* Removed the summary section with Net Amount and Bank Name */}
 
         {/* Transaction Table */}
         <div className="border rounded-lg overflow-hidden">

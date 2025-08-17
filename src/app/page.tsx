@@ -265,7 +265,6 @@ export default function HomePage() {
               <TransactionPreview
                 transactions={transactions}
                 onDownloadCSV={handleDownloadCSV}
-                bankName={extractedData?.bankName}
               />
               
               {/* Reset Button */}

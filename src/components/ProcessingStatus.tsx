@@ -120,12 +120,6 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ status, progress, e
                 {extractedData.transactionCount} transactions
               </Badge>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Bank Detected:</span>
-              <Badge variant="outline">
-                {extractedData.bankName || 'Auto-detected'}
-              </Badge>
-            </div>
             {extractedData.dateRange && (
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Date Range:</span>
